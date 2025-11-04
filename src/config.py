@@ -79,7 +79,8 @@ class MetricsConfig:
 class LoopConfig:
     tx_refresh_seconds: int = int(os.getenv("TX_REFRESH_SECONDS", "60"))
     tx_lookback: int = int(os.getenv("TX_LOOKBACK", "20"))
-    report_refresh_seconds: int = int(os.getenv("REPORT_REFRESH_SECONDS", "1800"))
+    # Par défaut 600s (10 min) pour plus de visibilité, était 1800s (30 min)
+    report_refresh_seconds: int = int(os.getenv("REPORT_REFRESH_SECONDS", "600"))
     max_concurrency: int = int(os.getenv("MAX_CONCURRENCY", "10"))
 
 

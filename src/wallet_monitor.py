@@ -1997,7 +1997,7 @@ def generate_detailed_report(
 
 
 def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
-    """Formate le rapport pour Discord avec des embeds."""
+    """Formate le rapport pour Discord avec des embeds enrichis."""
     stats = report["statistics"]
     config = report["configuration"]
 
@@ -2007,18 +2007,24 @@ def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
         f"{stats['rpc_errors'] / stats['rpc_calls'] * 100:.1f}%" if stats["rpc_calls"] > 0 else "0%"
     )
 
-    # Résumé principal
+    # Graphique ASCII pour le taux de succès
+    success_bar_length = int(stats["success_rate"] / 10)
+    success_bar = "█" * success_bar_length + "░" * (10 - success_bar_length)
+
+    # Résumé principal enrichi
     main_desc = (
-        f"**📊 Statistiques (10 dernières minutes)**\n"
-        f"• Scans: {stats['total_scans']} (✓{stats['successful_scans']} ✗{stats['failed_scans']}) - {success_rate} succès\n"
-        f"• Transactions détectées: {stats['transactions_detected']}\n"
-        f"• Appels RPC: {stats['rpc_calls']} (erreurs: {stats['rpc_errors']} - {error_rate})\n"
-        f"• Alertes générées: {stats['alerts_generated']}\n"
-        f"• Alertes bloquées: {stats['alerts_blocked']}\n"
-        f"• Wallets surveillés: {stats['watchlist_size']}\n"
+        f"**📊 Statistiques du bot**\n"
+        f"```\n"
+        f"Scans:      {stats['total_scans']:>4} (✓{stats['successful_scans']:>3} ✗{stats['failed_scans']:>3}) - {success_rate}\n"
+        f"Succès:     [{success_bar}] {success_rate}\n"
+        f"TX détect:  {stats['transactions_detected']:>4}\n"
+        f"RPC calls:  {stats['rpc_calls']:>4} (erreurs: {stats['rpc_errors']:>3} - {error_rate})\n"
+        f"Alertes:    Générées: {stats['alerts_generated']:>3} | Bloquées: {stats['alerts_blocked']:>3}\n"
+        f"Watchlist:  {stats['watchlist_size']:>3} wallets surveillés\n"
+        f"```\n"
     )
 
-    # Résumé des alertes bloquées par raison
+    # Résumé des alertes bloquées par raison avec graphique
     blocked_by_reason = {}
     for blocked in report.get("blocked_alerts", [])[:50]:
         reason = blocked.get("reason", "unknown")
@@ -2026,59 +2032,108 @@ def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
 
     blocked_summary = ""
     if blocked_by_reason:
-        blocked_summary = "\n**🔒 Alertes bloquées par raison:**\n"
+        blocked_summary = "\n**🔒 Alertes bloquées par raison:**\n```\n"
         reason_names = {
             "wallet_filtered": "Filtre wallet",
             "profit_below_threshold": "Profit < seuil",
             "confidence_too_low": "Confiance faible",
             "cooldown": "Cooldown actif",
+            "idempotence": "Déjà envoyée",
         }
+        total_blocked = sum(blocked_by_reason.values())
         for reason, count in sorted(blocked_by_reason.items(), key=lambda x: x[1], reverse=True):
-            blocked_summary += f"• {reason_names.get(reason, reason)}: {count}\n"
+            pct = (count / total_blocked * 100) if total_blocked > 0 else 0
+            bar_length = int(pct / 10)
+            bar = "█" * bar_length + "░" * (10 - bar_length)
+            blocked_summary += f"{reason_names.get(reason, reason):<20} [{bar}] {pct:>5.1f}%\n"
+        blocked_summary += "```\n"
 
-    # Top wallets
+    # Top wallets avec liens Solscan
     wallets_summary = ""
     if report.get("wallets"):
         top_wallets = sorted(report["wallets"], key=lambda w: w.get("net_total", 0), reverse=True)[
-            :5
+            :10
         ]
-        wallets_summary = "\n**👛 Top 5 Wallets:**\n"
-        for w in top_wallets:
+        wallets_summary = "\n**👛 Top 10 Wallets:**\n```\n"
+        wallets_summary += f"{'Wallet':<12} {'Profit':>8} {'Win%':>6} {'Status'}\n"
+        wallets_summary += "-" * 40 + "\n"
+        for idx, w in enumerate(top_wallets, 1):
             status = "✓" if w.get("passes_gain_filter") and w.get("passes_win_rate_filter") else "✗"
-            wallets_summary += f"• {status} {w['wallet'][:12]}… | {w['net_total']:+.2f} SOL | {w['win_rate']:.1f}%\n"
+            wallet_short = w["wallet"][:10] + "…"
+            wallets_summary += f"{idx:>2}. {wallet_short:<12} {w['net_total']:>+7.2f} {w['win_rate']:>5.1f}% {status}\n"
+        wallets_summary += "```\n"
+        # Ajouter les liens Solscan pour les 3 premiers
+        if top_wallets:
+            wallets_summary += "\n**🔗 Liens Solscan (Top 3):**\n"
+            for idx, w in enumerate(top_wallets[:3], 1):
+                wallet_addr = w["wallet"]
+                wallets_summary += f"{idx}. [Wallet {wallet_addr[:8]}…](https://solscan.io/account/{wallet_addr})\n"
 
-    # Top alertes récentes
+    # Top alertes récentes avec liens
     alerts_summary = ""
     if report.get("recent_alerts"):
-        alerts_summary = "\n**⚡ Alertes récentes:**\n"
+        alerts_summary = "\n**⚡ Alertes récentes (Top 5):**\n```\n"
+        alerts_summary += f"{'Wallet':<12} {'Profit':>8} {'DEX':<10} {'Type'}\n"
+        alerts_summary += "-" * 45 + "\n"
         for alert in report["recent_alerts"][:5]:
+            wallet_short = alert["wallet"][:10] + "…"
             alerts_summary += (
-                f"• {alert['wallet'][:12]}… | +{alert['profit']:.2f} SOL | {alert['dex']}\n"
+                f"{wallet_short:<12} {alert['profit']:>+7.2f} {alert['dex']:<10} {alert.get('signal_type', 'Signal')}\n"
             )
+        alerts_summary += "```\n"
+        # Ajouter les liens Solscan pour les signatures
+        signatures_links = []
+        for alert in report["recent_alerts"][:5]:
+            if alert.get("signature"):
+                sig = alert["signature"]
+                signatures_links.append(f"• [TX {sig[:8]}…](https://solscan.io/tx/{sig})")
+        if signatures_links:
+            alerts_summary += "\n**🔗 Transactions:**\n" + "\n".join(signatures_links) + "\n"
 
-    # Configuration
+    # Configuration avec indicateurs visuels
+    dry_run_status = "🔴 DRY_RUN" if config["dry_run"] else "🟢 LIVE"
     config_summary = (
-        f"\n**⚙️ Configuration:**\n"
-        f"• Seuil profit: {config['profit_alert_threshold']} SOL\n"
-        f"• Filtre gain: {config['gain_filter']} SOL\n"
-        f"• Filtre win rate: {config['win_rate_filter']}%\n"
-        f"• Cooldown: {config['alert_cooldown_sec']}s\n"
-        f"• DRY_RUN: {config['dry_run']}\n"
+        f"\n**⚙️ Configuration actuelle:**\n"
+        f"```\n"
+        f"Mode:            {dry_run_status}\n"
+        f"Seuil profit:    {config['profit_alert_threshold']:>6.2f} SOL\n"
+        f"Filtre gain:     {config['gain_filter']:>6.2f} SOL\n"
+        f"Filtre win rate: {config['win_rate_filter']:>6.1f}%\n"
+        f"Cooldown:        {config['alert_cooldown_sec']:>6d}s\n"
+        f"Refresh TX:      {config['tx_refresh_seconds']:>6d}s\n"
+        f"Endpoints RPC:   {config['rpc_endpoints_count']:>6d}\n"
+        f"```\n"
     )
 
-    # Santé RPC
+    # Santé RPC avec graphique
     rpc_health = report.get("rpc_health", {})
     rpc_summary = ""
     if rpc_health:
         endpoints_count = len(rpc_health.get("endpoints", []))
         errors_count = sum(rpc_health.get("error_counts", {}).values())
-        circuit_breaker = "⚠️" if rpc_health.get("circuit_breaker_active") else "✓"
+        circuit_breaker = "⚠️ ACTIF" if rpc_health.get("circuit_breaker_active") else "✅ OK"
         rpc_summary = (
             f"\n**🌐 Santé RPC:**\n"
-            f"• Endpoints: {endpoints_count}\n"
-            f"• Erreurs totales: {errors_count}\n"
-            f"• Circuit breaker: {circuit_breaker}\n"
+            f"```\n"
+            f"Endpoints:        {endpoints_count:>3}\n"
+            f"Erreurs totales:  {errors_count:>3}\n"
+            f"Circuit breaker:  {circuit_breaker}\n"
+            f"```\n"
         )
+        # Détails par endpoint
+        error_counts = rpc_health.get("error_counts", {})
+        if error_counts:
+            rpc_summary += "\n**📡 Erreurs par endpoint:**\n```\n"
+            for endpoint, count in sorted(error_counts.items(), key=lambda x: x[1], reverse=True):
+                endpoint_short = endpoint[:40] + "…" if len(endpoint) > 40 else endpoint
+                rpc_summary += f"{endpoint_short:<43} {count:>3}\n"
+            rpc_summary += "```\n"
+
+    # Uptime formaté
+    uptime_sec = report["uptime_seconds"]
+    uptime_hours = int(uptime_sec // 3600)
+    uptime_minutes = int((uptime_sec % 3600) // 60)
+    uptime_str = f"{uptime_hours}h {uptime_minutes}m"
 
     # Description complète
     full_description = (
@@ -2090,16 +2145,40 @@ def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
         + rpc_summary
     )
 
-    # Créer l'embed Discord
+    # Couleur selon l'état
+    if stats["rpc_errors"] == 0 and stats["success_rate"] > 95:
+        color = 0x00FF00  # Vert
+    elif stats["rpc_errors"] < 10 and stats["success_rate"] > 80:
+        color = 0xFFA500  # Orange
+    else:
+        color = 0xFF0000  # Rouge
+
+    # Créer l'embed Discord principal
     embed = {
         "title": "📊 Rapport détaillé - Wallet Monitor Bot",
         "description": full_description,
-        "color": 0x00FF00 if stats["rpc_errors"] == 0 else 0xFFA500,
+        "color": color,
         "timestamp": report["timestamp"],
-        "footer": {"text": f"Uptime: {int(report['uptime_seconds'] / 60)} minutes"},
+        "footer": {"text": f"Uptime: {uptime_str} | Bot actif"},
     }
 
-    payload = {"username": "WalletRadar", "embeds": [embed]}
+    # Créer un second embed pour les métriques supplémentaires si disponibles
+    embeds = [embed]
+    if stats.get("alerts_generated", 0) > 0 or stats.get("transactions_detected", 0) > 0:
+        activity_embed = {
+            "title": "📈 Activité récente",
+            "description": (
+                f"**Transactions analysées:** {stats.get('transactions_detected', 0)}\n"
+                f"**Alertes générées:** {stats.get('alerts_generated', 0)}\n"
+                f"**Watchlist:** {stats.get('watchlist_size', 0)} wallets\n"
+                f"**Signatures vues:** {stats.get('seen_signatures_count', 0)}\n"
+            ),
+            "color": 0x3498DB,
+            "timestamp": report["timestamp"],
+        }
+        embeds.append(activity_embed)
+
+    payload = {"username": "WalletRadar", "embeds": embeds}
 
     return payload
 
@@ -2415,20 +2494,22 @@ async def main_async() -> None:
 
             WATCHLIST_SIZE.set(len(watchlist))
 
-            if (loop_start - last_report_ts).total_seconds() >= REPORT_REFRESH_SECONDS:
+            # Générer rapport détaillé selon REPORT_REFRESH_SECONDS (minimum 600s = 10 min)
+            report_interval = max(REPORT_REFRESH_SECONDS, 600)
+            if (loop_start - last_report_ts).total_seconds() >= report_interval:
                 update_dashboard(df, alerts)
                 update_report(df, alerts, cluster_counter)
 
-                # Générer rapport détaillé toutes les 10 minutes (600 secondes)
-                if (loop_start - last_report_ts).total_seconds() >= 600:
-                    detailed_report = generate_detailed_report(
-                        df, alerts, cluster_counter, watchlist, rpc
-                    )
-                    save_detailed_report(detailed_report)  # Sauvegarde ET envoie sur Discord
-                    # Nettoyer les alertes bloquées (garder seulement les 2 dernières heures)
-                    global _blocked_alerts
-                    cutoff = time.time() - 7200
-                    _blocked_alerts = [b for b in _blocked_alerts if b.get("timestamp", 0) > cutoff]
+                # Générer rapport détaillé enrichi
+                detailed_report = generate_detailed_report(
+                    df, alerts, cluster_counter, watchlist, rpc
+                )
+                save_detailed_report(detailed_report)  # Sauvegarde ET envoie sur Discord (avec format enrichi)
+
+                # Nettoyer les alertes bloquées (garder seulement les 2 dernières heures)
+                global _blocked_alerts
+                cutoff = time.time() - 7200
+                _blocked_alerts = [b for b in _blocked_alerts if b.get("timestamp", 0) > cutoff]
 
                 last_report_ts = loop_start
 
