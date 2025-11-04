@@ -25,6 +25,8 @@ logs/
 token_price_cache.db
 copy_trader.db
 wallet_monitor_state.db
+wallet_activity_log.json
+wallet_report.md
 *.pid
 *.lock
 *.tmp
