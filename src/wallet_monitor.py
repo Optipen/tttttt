@@ -2527,7 +2527,6 @@ async def main_async() -> None:
 
             WATCHLIST_SIZE.set(len(watchlist))
 
-<<<<<<< HEAD
             # Générer rapport détaillé selon REPORT_REFRESH_SECONDS (minimum 600s = 10 min)
             report_interval = max(REPORT_REFRESH_SECONDS, 600)
             if (loop_start - last_report_ts).total_seconds() >= report_interval:
