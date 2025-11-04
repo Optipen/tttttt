@@ -1,0 +1,56 @@
+groups:
+- name: wallet-monitor-alerts
+  rules:
+  - alert: WalletAlertBurst
+    expr: increase(wallet_alerts_total[5m]) > 5
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Trop d'alertes émises"
+      description: "Plus de 5 alertes en 5min (bruit potentiel)."
+
+  - alert: WalletMonitorExporterDown
+    expr: up{job="wallet_monitor"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "wallet_monitor indisponible"
+      description: "Le /metrics ne répond plus depuis 2 minutes."
+
+  - alert: NoWalletSignals
+    expr: absent(wallet_last_profit_sol)
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Aucun signal depuis 15 min"
+      description: "Vérifie RPC, seuils, ou trafic."
+
+  - alert: PositiveProfitDetected
+    expr: max_over_time(wallet_last_profit_sol[2m]) > 0
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: "Profit détecté récemment"
+      description: "Au moins une série > 0 dans les 2 dernières minutes."
+
+  - alert: MainLoopStalled
+    expr: time() - max_over_time(wallet_mainloop_timestamp[3m]) > 180
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Boucle principale bloquée"
+      description: "Le loop lag dépasse 180s depuis 2 minutes."
+
+  - alert: RPCErrorsHigh
+    expr: increase(wallet_rpc_errors_total[5m]) > 10
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Trop d'erreurs RPC"
+      description: "Plus de 10 erreurs RPC en 5 minutes."

@@ -1,0 +1,14 @@
+solana
+pandas
+python-dateutil
+prometheus-client
+requests
+pytest
+pytest-cov
+pytest-asyncio
+aiohttp
+ruff
+mypy
+black
+isort
+

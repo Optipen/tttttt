@@ -1,0 +1,58 @@
+version: "3.9"
+services:
+  wallet-monitor:
+    build:
+      context: ..
+      dockerfile: config/Dockerfile
+    image: wallet-monitor:1.0
+    container_name: wallet-monitor
+    restart: unless-stopped
+    env_file:
+      - config/.env
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PROFIT_ALERT_THRESHOLD=0.5
+      - TX_LOOKBACK=100
+      - TX_REFRESH_SECONDS=20
+      - DEBUG_FORCE_ALERT=${DEBUG_FORCE_ALERT:-}
+      - DEBUG_FORCE_ALERT_PROFIT=${DEBUG_FORCE_ALERT_PROFIT:-0.7}
+      - DEBUG_FORCE_ALERT_WALLET=${DEBUG_FORCE_ALERT_WALLET:-TEST_WALLET_FORCED}
+      - GAIN_FILTER=${GAIN_FILTER:-5.0}
+      - WIN_RATE_FILTER=${WIN_RATE_FILTER:-80.0}
+      - RPC_ENDPOINTS=${RPC_ENDPOINTS:-}
+      - NEW_WALLET_GAIN=${NEW_WALLET_GAIN:-7.0}
+      - NEW_WALLET_MIN_TRX=${NEW_WALLET_MIN_TRX:-12}
+      - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC:-300}
+      - COPY_TRADER_ENABLED=true
+    volumes:
+      - ../src:/app/src
+      - ../data:/app/data
+      - ../config:/app/config
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../config/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../config/infra/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  prometheus_data:
+  grafana_data:
+

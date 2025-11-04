@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.venv/
+venv/
+.env
+.env.local
+.env.*.local
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Logs & runtime
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+*_state.db
+token_price_cache.db
+copy_trader.db
+wallet_monitor_state.db
+*.pid
+*.lock
+*.tmp
+tmp/
+cache/
+
+# Notebooks / reports
+*.ipynb
+*.ipynb_checkpoints/
+*.csv
+*.tsv
+*.parquet
+*.xlsx
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+*.whl
+
+# Tools
+.DS_Store
+.idea/
+.vscode/

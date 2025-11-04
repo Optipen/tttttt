@@ -1,0 +1,13 @@
+[
+  {
+    "signature": "FIXTURE_SIG_COOLDOWN_001",
+    "blockTime": 1761897966,
+    "slot": 280000000
+  },
+  {
+    "signature": "FIXTURE_SIG_COOLDOWN_002",
+    "blockTime": 1761897965,
+    "slot": 279999999
+  }
+]
+
