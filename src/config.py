@@ -82,6 +82,9 @@ class LoopConfig:
     # Par défaut 600s (10 min) pour plus de visibilité, était 1800s (30 min)
     report_refresh_seconds: int = int(os.getenv("REPORT_REFRESH_SECONDS", "600"))
     max_concurrency: int = int(os.getenv("MAX_CONCURRENCY", "10"))
+    report_initial_delay_seconds: int = int(os.getenv("REPORT_INITIAL_DELAY_SECONDS", "0"))
+    report_min_interval_seconds: int = int(os.getenv("REPORT_MIN_INTERVAL_SECONDS", "600"))
+    heartbeat_interval_seconds: int = int(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "900"))
 
 
 @dataclass(frozen=True)

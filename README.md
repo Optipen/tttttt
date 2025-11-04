@@ -237,6 +237,9 @@ pytest tests/test_profit_estimator_improvements.py -v
 - Discord webhook (optionnel)
 - Filtrage par cooldown et idempotence
 - Métriques Prometheus
+- Rapport initial Discord pour valider la configuration (`REPORT_INITIAL_DELAY_SECONDS`)
+- Heartbeat visuel configurable sur Discord (`HEARTBEAT_INTERVAL_SECONDS`)
+- Rapports détaillés périodiques envoyés/archivés (`REPORT_MIN_INTERVAL_SECONDS`, `REPORT_REFRESH_SECONDS`)
 
 ### Copy-trading (optionnel)
 

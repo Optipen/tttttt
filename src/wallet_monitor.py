@@ -153,6 +153,9 @@ RPC_MODE = CONFIG.rpc_mode
 RPC_ENDPOINTS = CONFIG.rpc_endpoints
 TX_REFRESH_SECONDS = CONFIG.loop.tx_refresh_seconds
 REPORT_REFRESH_SECONDS = CONFIG.loop.report_refresh_seconds
+REPORT_INITIAL_DELAY_SECONDS = CONFIG.loop.report_initial_delay_seconds
+REPORT_MIN_INTERVAL_SECONDS = CONFIG.loop.report_min_interval_seconds
+HEARTBEAT_INTERVAL_SECONDS = CONFIG.loop.heartbeat_interval_seconds
 TX_LOOKBACK = CONFIG.loop.tx_lookback
 MAX_CONCURRENCY = CONFIG.loop.max_concurrency
 PROFIT_ALERT_THRESHOLD = CONFIG.alerting.profit_threshold
@@ -1877,7 +1880,7 @@ def generate_detailed_report(
     watchlist: List[str],
     rpc: AsyncRpcManager,
 ) -> Dict[str, Any]:
-    """Génère un rapport détaillé JSON toutes les 10 minutes avec toutes les activités."""
+    """Génère un rapport détaillé JSON synthétisant l'activité courante."""
     now = dt.datetime.now(dt.timezone.utc)
     uptime = time.time() - _scan_stats["start_time"]
 
@@ -1996,7 +1999,9 @@ def generate_detailed_report(
     return report
 
 
-def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
+def format_report_for_discord(
+    report: Dict[str, Any], title_override: Optional[str] = None
+) -> Dict[str, Any]:
     """Formate le rapport pour Discord avec des embeds enrichis."""
     stats = report["statistics"]
     config = report["configuration"]
@@ -2154,8 +2159,9 @@ def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
         color = 0xFF0000  # Rouge
 
     # Créer l'embed Discord principal
+    title = title_override if title_override else "📊 Rapport détaillé - Wallet Monitor Bot"
     embed = {
-        "title": "📊 Rapport détaillé - Wallet Monitor Bot",
+        "title": title,
         "description": full_description,
         "color": color,
         "timestamp": report["timestamp"],
@@ -2183,13 +2189,15 @@ def format_report_for_discord(report: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
-async def send_report_to_discord(report: Dict[str, Any]) -> None:
+async def send_report_to_discord(
+    report: Dict[str, Any], title_override: Optional[str] = None
+) -> None:
     """Envoie le rapport détaillé sur Discord."""
     if not DISCORD_WEBHOOK:
         return
 
     try:
-        payload = format_report_for_discord(report)
+        payload = format_report_for_discord(report, title_override=title_override)
         timeout = aiohttp.ClientTimeout(total=10)
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -2207,7 +2215,7 @@ async def send_report_to_discord(report: Dict[str, Any]) -> None:
         LOGGER.warning("error sending report to discord", extra={"error": str(exc)})
 
 
-def save_detailed_report(report: Dict[str, Any]) -> None:
+def save_detailed_report(report: Dict[str, Any], title_override: Optional[str] = None) -> None:
     """Sauvegarde le rapport détaillé dans un fichier JSON avec timestamp et l'envoie sur Discord."""
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
     report_file = Path("data") / f"detailed_report_{timestamp}.json"
@@ -2229,12 +2237,21 @@ def save_detailed_report(report: Dict[str, Any]) -> None:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # Si on est dans une boucle async, créer une tâche
-            asyncio.create_task(send_report_to_discord(report))
+            asyncio.create_task(send_report_to_discord(report, title_override=title_override))
         else:
             # Sinon, exécuter directement
-            loop.run_until_complete(send_report_to_discord(report))
+            loop.run_until_complete(send_report_to_discord(report, title_override=title_override))
     except Exception as exc:
         LOGGER.warning("failed to send report to discord", extra={"error": str(exc)})
+
+
+def prune_blocked_alerts(retention_seconds: int = 7200) -> None:
+    """Nettoie les alertes bloquées anciennes pour éviter la croissance infinie."""
+
+    global _blocked_alerts
+
+    cutoff = time.time() - retention_seconds
+    _blocked_alerts = [b for b in _blocked_alerts if b.get("timestamp", 0) > cutoff]
 
 
 def append_log(event: dict) -> None:
@@ -2460,11 +2477,27 @@ async def main_async() -> None:
             tier="free",
         )
     last_report_ts = dt.datetime.fromtimestamp(0, tz=dt.timezone.utc)
+    last_detailed_report_ts = dt.datetime.fromtimestamp(0, tz=dt.timezone.utc)
+    last_heartbeat_ts = dt.datetime.fromtimestamp(0, tz=dt.timezone.utc)
 
     save_counter = 0
     sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
     async with AsyncRpcManager(RPC_ENDPOINTS) as rpc:
+        if REPORT_INITIAL_DELAY_SECONDS >= 0:
+            if REPORT_INITIAL_DELAY_SECONDS:
+                await asyncio.sleep(REPORT_INITIAL_DELAY_SECONDS)
+
+            startup_report = generate_detailed_report(
+                df, alerts, cluster_counter, watchlist, rpc
+            )
+            save_detailed_report(
+                startup_report, title_override="🚀 Rapport initial - Bot prêt"
+            )
+            now_ts = dt.datetime.now(dt.timezone.utc)
+            last_detailed_report_ts = now_ts
+            last_heartbeat_ts = now_ts
+
         while True:
             loop_start = dt.datetime.now(dt.timezone.utc)
             LAST_LOOP_TS.set(time.time())
@@ -2494,6 +2527,13 @@ async def main_async() -> None:
 
             WATCHLIST_SIZE.set(len(watchlist))
 
+<<<<<<< HEAD
+            # Générer rapport détaillé selon REPORT_REFRESH_SECONDS (minimum 600s = 10 min)
+            report_interval = max(REPORT_REFRESH_SECONDS, 600)
+            if (loop_start - last_report_ts).total_seconds() >= report_interval:
+                update_dashboard(df, alerts)
+                update_report(df, alerts, cluster_counter)
+
             # Générer rapport détaillé selon REPORT_REFRESH_SECONDS (minimum 600s = 10 min)
             report_interval = max(REPORT_REFRESH_SECONDS, 600)
             if (loop_start - last_report_ts).total_seconds() >= report_interval:
@@ -2512,6 +2552,23 @@ async def main_async() -> None:
                 _blocked_alerts = [b for b in _blocked_alerts if b.get("timestamp", 0) > cutoff]
 
                 last_report_ts = loop_start
+                prune_blocked_alerts()
+                last_detailed_report_ts = loop_start
+                last_heartbeat_ts = loop_start
+
+            if HEARTBEAT_INTERVAL_SECONDS > 0:
+                if (
+                    loop_start - last_heartbeat_ts
+                ).total_seconds() >= HEARTBEAT_INTERVAL_SECONDS:
+                    if detailed_report_payload is None:
+                        detailed_report_payload = generate_detailed_report(
+                            df, alerts, cluster_counter, watchlist, rpc
+                        )
+                    await send_report_to_discord(
+                        detailed_report_payload, title_override="👀 Heartbeat - Bot actif"
+                    )
+                    prune_blocked_alerts()
+                    last_heartbeat_ts = loop_start
 
             save_counter += 1
             if save_counter >= 10:
