@@ -2533,11 +2533,17 @@ async def main_async() -> None:
                 update_dashboard(df, alerts)
                 update_report(df, alerts, cluster_counter)
 
-                # Générer rapport détaillé enrichi
-                detailed_report = generate_detailed_report(
-                    df, alerts, cluster_counter, watchlist, rpc
-                )
-                save_detailed_report(detailed_report)  # Sauvegarde ET envoie sur Discord (avec format enrichi)
+                # Générer rapport détaillé enrichi si minimum interval respecté
+                if (
+                    REPORT_MIN_INTERVAL_SECONDS >= 0
+                    and (loop_start - last_detailed_report_ts).total_seconds()
+                    >= REPORT_MIN_INTERVAL_SECONDS
+                ):
+                    detailed_report = generate_detailed_report(
+                        df, alerts, cluster_counter, watchlist, rpc
+                    )
+                    save_detailed_report(detailed_report)  # Sauvegarde ET envoie sur Discord (avec format enrichi)
+                    last_detailed_report_ts = loop_start
 
                 # Nettoyer les alertes bloquées (garder seulement les 2 dernières heures)
                 global _blocked_alerts
@@ -2546,17 +2552,14 @@ async def main_async() -> None:
 
                 last_report_ts = loop_start
                 prune_blocked_alerts()
-                last_detailed_report_ts = loop_start
-                last_heartbeat_ts = loop_start
 
             if HEARTBEAT_INTERVAL_SECONDS > 0:
                 if (
                     loop_start - last_heartbeat_ts
                 ).total_seconds() >= HEARTBEAT_INTERVAL_SECONDS:
-                    if detailed_report_payload is None:
-                        detailed_report_payload = generate_detailed_report(
-                            df, alerts, cluster_counter, watchlist, rpc
-                        )
+                    detailed_report_payload = generate_detailed_report(
+                        df, alerts, cluster_counter, watchlist, rpc
+                    )
                     await send_report_to_discord(
                         detailed_report_payload, title_override="👀 Heartbeat - Bot actif"
                     )
